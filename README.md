@@ -87,7 +87,6 @@ fun FlippableUserAvatar(isSelected: Boolean, ...) {
 ```
 
 ## 예시 영상
-- [실행 예시 영상 보기](file:///Users/geumyonglee/Desktop/Screen_recording_20260521_194354.webm)
+- [실행 예시 영상 보기]([https://github.com/user-attachments/assets/101e8239-91ae-4976-8286-e5c893fe42a8])
 
----
-*참고: 위 영상 링크는 현재 로컬 경로로 설정되어 있습니다. GitHub 등에 업로드 시 해당 링크를 온라인 URL로 교체하여 사용하십시오.*
+
