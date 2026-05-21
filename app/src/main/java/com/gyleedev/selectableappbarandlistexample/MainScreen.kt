@@ -2,6 +2,7 @@ package com.gyleedev.selectableappbarandlistexample
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
@@ -45,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -388,8 +391,9 @@ fun UserInfoItem(
     onEvent: (MainUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 선택 여부에 따라 배경색을 은은하게 변경합니다. (애니메이션과 조화)
     val backgroundColor = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
     } else {
         Color.Transparent
     }
@@ -399,7 +403,7 @@ fun UserInfoItem(
             .fillMaxWidth()
             .heightIn(min = 80.dp, max = 100.dp)
             .background(backgroundColor)
-            // 통합된 이벤트를 발생시킵니다.
+            // 클릭과 롱 클릭 이벤트를 모두 처리합니다.
             .combinedClickable(
                 onClick = { onEvent(MainUiEvent.CLICK) },
                 onLongClick = { onEvent(MainUiEvent.LONG_CLICK) },
@@ -408,7 +412,11 @@ fun UserInfoItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        UserAvatar(avatar = avatar)
+        // 3D 플립 애니메이션이 적용된 아바타 컴포넌트입니다.
+        FlippableUserAvatar(
+            avatar = avatar,
+            isSelected = isSelected
+        )
         Text(
             text = login,
             fontWeight = FontWeight.Bold,
@@ -416,20 +424,80 @@ fun UserInfoItem(
     }
 }
 
-// 사용자의 아바타 이미지를 표시하는 공용 컴포넌트입니다.
+// 선택 상태에 따라 3D 플립 애니메이션을 수행하는 아바타 컴포넌트입니다.
+@Composable
+fun FlippableUserAvatar(
+    avatar: String,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    size: Dp = 56.dp
+) {
+    // 선택 여부에 따라 0도에서 180도까지 회전하는 애니메이션 상태를 생성합니다.
+    val rotation by animateFloatAsState(
+        targetValue = if (isSelected) 180f else 0f,
+        animationSpec = tween(durationMillis = 400),
+        label = "avatarFlip"
+    )
+
+    // 3D 효과를 구현하기 위한 레이어 설정입니다.
+    Box(
+        modifier = modifier
+            .padding(horizontal = 8.dp)
+            .size(size)
+            .graphicsLayer {
+                // Y축을 기준으로 회전시킵니다.
+                rotationY = rotation
+                // 원근감을 주어 입체적인 느낌을 강화합니다.
+                cameraDistance = 12f * density
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // 회전 각도가 90도 이하일 때는 앞면(아바타)을 보여줍니다.
+        if (rotation <= 90f) {
+            UserAvatar(
+                avatar = avatar,
+                modifier = Modifier.fillMaxSize(),
+                size = size
+            )
+        } else {
+            // 회전 각도가 90도를 넘으면 뒷면(체크 표시 원)을 보여줍니다.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // 이미지가 반전되어 보이지 않도록 다시 180도 회전시킵니다.
+                        rotationY = 180f
+                    }
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = "선택됨",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(size * 0.6f)
+                )
+            }
+        }
+    }
+}
+
+// 사용자의 아바타 이미지를 표시하는 기본 컴포넌l트입니다.
 @Composable
 fun UserAvatar(
     avatar: String,
     modifier: Modifier = Modifier,
     size: Dp = 56.dp,
 ) {
+    // Glide를 사용하여 이미지를 로드하고 쉬머 효과를 적용합니다.
     GlideImage(
         imageModel = { avatar },
         modifier = modifier
-            .padding(horizontal = 8.dp)
             .size(size)
             .clip(CircleShape),
         component = rememberImageComponent {
+            // 로딩 중에 보여줄 쉬머 플러그인을 추가합니다.
             +ShimmerPlugin(
                 Shimmer.Flash(
                     baseColor = Color.White,
