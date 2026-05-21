@@ -87,6 +87,6 @@ fun FlippableUserAvatar(isSelected: Boolean, ...) {
 ```
 
 ## 예시 영상
-- [실행 예시 영상 보기]([https://github.com/user-attachments/assets/101e8239-91ae-4976-8286-e5c893fe42a8])
 
+https://github.com/user-attachments/assets/101e8239-91ae-4976-8286-e5c893fe42a8
 
