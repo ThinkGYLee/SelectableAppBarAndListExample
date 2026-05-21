@@ -15,8 +15,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SelectableAppBarAndListExampleTheme {
-                // 커스텀 화면인 SelectableAppBarAndListExampleScreen을 호출합니다.
-                SelectableAppBarAndListExampleScreen()
+                // 통합된 메인 화면인 MainScreen을 호출합니다.
+                MainScreen()
             }
         }
     }

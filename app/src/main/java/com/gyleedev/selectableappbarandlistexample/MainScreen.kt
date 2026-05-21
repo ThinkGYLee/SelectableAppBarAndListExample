@@ -1,25 +1,44 @@
 package com.gyleedev.selectableappbarandlistexample
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -36,43 +55,51 @@ import com.skydoves.landscapist.glide.GlideImage
 import com.skydoves.landscapist.placeholder.shimmer.Shimmer
 import com.skydoves.landscapist.placeholder.shimmer.ShimmerPlugin
 
-// 선택 가능한 앱바와 리스트 예시 화면을 구성하는 메인 Composable 함수입니다.
+// 메인 화면을 구성하는 통합 Composable 함수입니다.
 @Composable
-fun SelectableAppBarAndListExampleScreen(
+fun MainScreen(
     // Hilt를 사용하여 ViewModel을 주입받습니다.
     viewModel: MainViewModel = hiltViewModel()
 ) {
-    // ViewModel의 UI 상태를 생명주기에 안전하게 구독합니다.
+    // ViewModel의 UI 상태와 검색 로딩 상태를 안전하게 구독합니다.
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isSearchLoading by viewModel.isSearchLoading.collectAsStateWithLifecycle()
 
     // Scaffold는 앱의 기본적인 시각적 레이아웃 구조를 제공합니다.
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        // 상단에 표시될 커스텀 앱바를 설정합니다. 현재의 UI 상태를 전달합니다.
+        // 분리된 전용 TopAppBar 컴포저블을 호출합니다.
         topBar = {
-            CustomTopBar(uiState)
+            MainTopAppBar(
+                uiState = uiState,
+                isSearchLoading = isSearchLoading,
+                onQueryChange = { viewModel.onQueryChange(it) },
+                onSearch = { viewModel.onSearch(it) },
+                onSearchItemReset = { viewModel.onSearchItemReset() },
+                onModeChanged = { isActive ->
+                    viewModel.setMode(if (isActive) MainMode.SEARCH else MainMode.NONE)
+                },
+                onSelectAll = { viewModel.selectAll() },
+                onUnselectAll = { viewModel.unselectAll() },
+                onExitSelection = { viewModel.exitSelectionMode() }
+            )
         }
     ) { innerPadding ->
-        // 상태에 따라 다른 화면을 보여줍니다.
+        // 메인 콘텐츠 영역입니다.
         when (val state = uiState) {
             is MainUiState.Loading -> {
-                // 로딩 중일 때 표시할 화면입니다.
+                // 데이터를 불러오는 중일 때의 화면입니다.
                 LoadingScreen(innerPadding)
             }
+
             is MainUiState.Success -> {
-                // 데이터를 성공적으로 불러왔을 때 리스트를 표시합니다.
+                // 데이터를 성공적으로 불러왔을 때의 리스트 화면입니다.
                 ListContent(
                     paddingValues = innerPadding,
                     items = state.items,
-                    onItemClick = { item ->
-                        // 아이템 클릭 시 선택 상태를 토글합니다.
-                        viewModel.toggleItemSelection(item.login)
-                    },
-                    onItemLongClick = { item ->
-                        // 롱 클릭 시 선택 모드로 진입하며 해당 아이템을 선택합니다.
-                        if (state.mode != MainMode.SELECT) {
-                            viewModel.toggleItemSelection(item.login)
-                        }
+                    onItemEvent = { login, event ->
+                        // 아이템에서 발생하는 이벤트를 ViewModel에 전달합니다.
+                        viewModel.handleItemEvent(login, event)
                     }
                 )
             }
@@ -80,7 +107,60 @@ fun SelectableAppBarAndListExampleScreen(
     }
 }
 
-// 로딩 화면을 구성하는 Composable 함수입니다.
+// 모드 전환에 따른 상단 바 구성을 담당하는 통합 컴포저블입니다.
+@Composable
+fun MainTopAppBar(
+    uiState: MainUiState,
+    isSearchLoading: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearch: (String) -> Unit,
+    onSearchItemReset: () -> Unit,
+    onModeChanged: (Boolean) -> Unit,
+    onSelectAll: () -> Unit,
+    onUnselectAll: () -> Unit,
+    onExitSelection: () -> Unit,
+) {
+    // 현재 모드를 기준으로 애니메이션을 적용합니다.
+    AnimatedContent(
+        targetState = (uiState as? MainUiState.Success)?.mode ?: MainMode.NONE,
+        transitionSpec = {
+            // 부드러운 페이드 효과를 적용합니다.
+            fadeIn(animationSpec = tween(300)) togetherWith
+                    fadeOut(animationSpec = tween(300))
+        },
+        label = "TopBarModeTransition"
+    ) { mode ->
+        when (mode) {
+            // 선택 모드일 때의 UI입니다.
+            MainMode.SELECT -> {
+                val state = uiState as MainUiState.Success
+                SelectionTopBar(
+                    items = state.items,
+                    onSelectAll = onSelectAll,
+                    onUnselectAll = onUnselectAll,
+                    onExitSelection = onExitSelection
+                )
+            }
+            // 기본 또는 검색 모드일 때의 UI입니다.
+            MainMode.NONE, MainMode.SEARCH -> {
+                val state = uiState as? MainUiState.Success
+                EmbeddedSearchBar(
+                    onQueryChange = onQueryChange,
+                    isSearchActive = mode == MainMode.SEARCH,
+                    query = state?.query ?: "",
+                    searchState = state?.searchState ?: SearchUiState.Idle,
+                    onActiveChanged = onModeChanged,
+                    onSearch = onSearch,
+                    onSearchItemReset = onSearchItemReset,
+                    moveToDetail = { /* TODO */ },
+                    loading = isSearchLoading
+                )
+            }
+        }
+    }
+}
+
+// 데이터를 로딩 중일 때 표시할 화면입니다.
 @Composable
 fun LoadingScreen(paddingValues: PaddingValues) {
     Box(
@@ -89,48 +169,196 @@ fun LoadingScreen(paddingValues: PaddingValues) {
             .padding(paddingValues),
         contentAlignment = Alignment.Center
     ) {
-        // 중앙에 프로그레스 인디케이터를 표시합니다.
         CircularProgressIndicator()
     }
 }
 
-// 앱의 상단 바를 구성하는 Composable 함수입니다.
+// 상단에 임베드된 검색 바 컴포넌트입니다.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CustomTopBar(uiState: MainUiState) {
-    // 현재 화면의 모드에 따라 타이틀을 결정합니다.
-    val title = when (uiState) {
-        is MainUiState.Success -> {
-            when (uiState.mode) {
-                MainMode.NONE -> "선택 가능한 리스트 예제"
-                MainMode.SEARCH -> "사용자 검색"
-                MainMode.SELECT -> {
-                    // 선택된 아이템의 개수를 계산하여 타이틀에 표시합니다.
-                    val selectedCount = uiState.items.count { it.isSelected }
-                    "${selectedCount}개 선택됨"
+fun EmbeddedSearchBar(
+    onQueryChange: (String) -> Unit,
+    isSearchActive: Boolean,
+    query: String,
+    searchState: SearchUiState,
+    onActiveChanged: (Boolean) -> Unit,
+    onSearch: (String) -> Unit,
+    onSearchItemReset: () -> Unit,
+    moveToDetail: (String) -> Unit,
+    loading: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    // 검색 활성화 여부에 따라 좌우 패딩을 애니메이션으로 조절합니다.
+    val animatePadding by animateDpAsState(
+        targetValue = if (isSearchActive) 0.dp else 24.dp,
+        label = "animatePadding",
+    )
+
+    SearchBar(
+        inputField = {
+            SearchBarDefaults.InputField(
+                query = query,
+                onQueryChange = onQueryChange,
+                onSearch = onSearch,
+                expanded = isSearchActive,
+                onExpandedChange = onActiveChanged,
+                placeholder = { Text(text = "사용자 아이디를 검색하세요") },
+                leadingIcon = {
+                    if (isSearchActive) {
+                        IconButton(onClick = { onActiveChanged(false) }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "검색 취소",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = "검색",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                trailingIcon = {
+                    if (isSearchActive && query.isNotEmpty()) {
+                        IconButton(onClick = {
+                            onQueryChange("")
+                            onSearchItemReset()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "검색어 삭제",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                },
+            )
+        },
+        expanded = isSearchActive,
+        onExpandedChange = onActiveChanged,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = animatePadding),
+    ) {
+        if (searchState is SearchUiState.Success) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp)
+                    .navigationBarsPadding()
+                    .imePadding(),
+            ) {
+                SearchResultItem(
+                    onClick = moveToDetail,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    login = searchState.login,
+                    name = searchState.name,
+                    bio = searchState.bio,
+                    avatar = searchState.avatar,
+                )
+
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+
+                Button(
+                    onClick = { onSearch(query) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter),
+                ) {
+                    Text("검색 수행")
                 }
             }
         }
-        else -> "로딩 중..."
     }
+}
 
-    // Material3의 TopAppBar를 사용하여 상단 바를 구현합니다.
-    TopAppBar(
+// 검색 결과 아이템의 상세 정보를 표시하는 컴포넌트입니다.
+@Composable
+fun SearchResultItem(
+    onClick: (String) -> Unit,
+    login: String,
+    name: String,
+    bio: String,
+    avatar: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        UserAvatar(avatar = avatar, size = 120.dp)
+        Text(
+            text = name,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "@$login",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = bio,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+    }
+}
+
+// 선택 모드일 때 표시되는 중앙 정렬 상단 앱바입니다.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SelectionTopBar(
+    items: List<SelectableUserItem>,
+    onSelectAll: () -> Unit,
+    onUnselectAll: () -> Unit,
+    onExitSelection: () -> Unit
+) {
+    val selectedCount = items.count { it.isSelected }
+    val isAllSelected = items.isNotEmpty() && items.all { it.isSelected }
+
+    CenterAlignedTopAppBar(
         title = {
-            Text(text = title)
+            Text(
+                text = "${selectedCount}개 선택됨",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        navigationIcon = {
+            Checkbox(
+                checked = isAllSelected,
+                onCheckedChange = { checked ->
+                    if (checked) onSelectAll() else onUnselectAll()
+                },
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        },
+        actions = {
+            IconButton(onClick = onExitSelection) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "선택 종료",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     )
 }
 
-// 리스트 내용을 표시하는 Composable 함수입니다.
+// 메인 사용자 리스트를 표시하는 Composable 함수입니다.
 @Composable
 fun ListContent(
     paddingValues: PaddingValues,
     items: List<SelectableUserItem>,
-    onItemClick: (SelectableUserItem) -> Unit,
-    onItemLongClick: (SelectableUserItem) -> Unit
+    onItemEvent: (String, MainUiEvent) -> Unit
 ) {
-    // LazyColumn을 사용하여 효율적인 리스트를 구현합니다.
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -138,55 +366,49 @@ fun ListContent(
     ) {
         items(
             items = items,
-            key = { it.login } // 효율적인 리스트 업데이트를 위해 각 아이템의 고유 키를 지정합니다.
+            key = { it.login }
         ) { item ->
-            // 각 사용자 정보를 표시하기 위해 커스텀 UserInfoItem을 사용합니다.
+            // 개별 사용자 정보 아이템을 표시하며 이벤트를 전달합니다.
             UserInfoItem(
                 avatar = item.avatar,
                 login = item.login,
                 isSelected = item.isSelected,
-                onClick = { onItemClick(item) },
-                onLongClick = { onItemLongClick(item) }
+                onEvent = { event -> onItemEvent(item.login, event) }
             )
         }
     }
 }
 
-// 사용자 개별 정보를 표시하는 아이템 컴포넌트입니다.
+// 개별 사용자 정보를 가로로 배치하여 표시하는 컴포넌트입니다.
 @Composable
 fun UserInfoItem(
     avatar: String,
     login: String,
     isSelected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onEvent: (MainUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 선택 여부에 따라 배경색을 변경하여 사용자에게 시각적 피드백을 제공합니다.
     val backgroundColor = if (isSelected) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
         Color.Transparent
     }
 
-    // 가로 방향으로 아바타와 사용자 이름을 배치합니다.
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 80.dp, max = 100.dp)
-            .background(backgroundColor) // 배경색을 적용합니다.
-            // 클릭과 롱 클릭을 모두 지원하는 combinedClickable을 설정합니다.
+            .background(backgroundColor)
+            // 통합된 이벤트를 발생시킵니다.
             .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
+                onClick = { onEvent(MainUiEvent.CLICK) },
+                onLongClick = { onEvent(MainUiEvent.LONG_CLICK) },
             )
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // 사용자 아바타 이미지를 표시합니다.
         UserAvatar(avatar = avatar)
-        // 사용자 이름을 굵은 텍스트로 표시합니다.
         Text(
             text = login,
             fontWeight = FontWeight.Bold,
@@ -194,23 +416,20 @@ fun UserInfoItem(
     }
 }
 
-// 사용자의 아바타 이미지를 불러와서 표시하는 컴포넌트입니다.
+// 사용자의 아바타 이미지를 표시하는 공용 컴포넌트입니다.
 @Composable
 fun UserAvatar(
     avatar: String,
     modifier: Modifier = Modifier,
     size: Dp = 56.dp,
 ) {
-    // Glide를 사용하여 이미지를 로드하고 Shimmer 효과를 적용합니다.
     GlideImage(
         imageModel = { avatar },
         modifier = modifier
             .padding(horizontal = 8.dp)
             .size(size)
             .clip(CircleShape),
-        // 이미지 로딩 중이나 실패 시의 컴포넌트를 설정합니다.
         component = rememberImageComponent {
-            // 쉬머(Shimmer) 효과를 추가하여 로딩 상태를 시각적으로 보여줍니다.
             +ShimmerPlugin(
                 Shimmer.Flash(
                     baseColor = Color.White,
