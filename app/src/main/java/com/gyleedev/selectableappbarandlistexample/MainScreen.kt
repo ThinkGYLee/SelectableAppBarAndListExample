@@ -393,7 +393,7 @@ fun UserInfoItem(
 ) {
     // 선택 여부에 따라 배경색을 은은하게 변경합니다. (애니메이션과 조화)
     val backgroundColor = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
     } else {
         Color.Transparent
     }
